@@ -1,16 +1,18 @@
-### Hi there 👋
+![waving](https://capsule-render.vercel.app/api?type=waving&height=200&text=Belluga🎆&fontAlign=80&fontAlignY=40&color=gradient)
 
-<!--
-**baesuyeon/baesuyeon** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+<p align="center">
+Interested in working on backend APIs, Database  
+</p>
+<h3 align="center">📚 My skills 📚</h3>
+<p align="center">
+  <img src="https://img.shields.io/badge/-JAVA-orange"/>&nbsp
+  <img src="https://img.shields.io/badge/-MySQL-navy"/>&nbsp
+  <img src="https://img.shields.io/badge/-SpringBoot-orange"/>&nbsp
+</p>
 
-Here are some ideas to get you started:
+<h3 align="center">•••</h3>
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+<p align="center">
+  <a href="https://velog.io/@qotndus43"><img src="https://img.shields.io/badge/Tech%20Blog-11B48A?style=flat-square&logo=Vimeo&logoColor=white&link=https://velog.io/@new_wisdom"/></a>&nbsp
+  <a href="mailto:qotndus950403@gmail.com"><img src="https://img.shields.io/badge/Gmail-d14836?style=flat-square&logo=Gmail&logoColor=white&link=mailto:qotndus950403@gmail.com"/></a>
+</p>
