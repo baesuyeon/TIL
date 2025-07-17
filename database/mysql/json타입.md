@@ -25,3 +25,11 @@ SON 컬럼은 내부적으로 바이너리로 저장되기 때문에 직접 인�
 MySQL 8.0.17 이상에서는 InnoDB 스토리지 엔진이 JSON 배열 안의 각 원소에 대해 인덱스를 부여할 수 있는 기능을 지원한다.
 
 ## Partial Updates of JSON Values
+
+- MySQL 8.0에서는 JSON 데이터를 수정할 때 JSON_SET(), JSON_REPLACE(), JSON_REMOVE() 함수 중 하나로 전체를 새로 저장하지 않고 부분 업데이트가 가능하다.
+
+- 단 부분 업데이트는 **덧붙이기(insert)**가 아니라 **교체(replace)**만 가능하며(in-place update) 기존 값보다 새 값이 크면 안된다. (바이트 기준)
+
+
+## Creating JSON Values
+
