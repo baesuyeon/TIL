@@ -55,4 +55,53 @@ WORKDIR /app
 ```bash
 CMD ["python3", "app.py"]
 ```
-컨테이너 실행 시 기본으로 실행될 명령을 지정한다.
+컨테이너 실행 시 기본으로 실행될 명령을 지정한다. 
+위 명령은 python3 app.py와 동일한 역할을 하며 컨테이너가 시작되자마자 app.py 파일을 파이썬으로 실행시킨다.
+JSON 배열 형식으로 명령어와 인자를 전달한다. 
+
+CMD는 Dockerfile 하나당 한 번만 사용할 수 있으며, 여러 번 사용하면 마지막 것이 적용된다.
+docker run 명령어에서 실행 명령을 직접 지정하면 그 명령이 CMD를 덮어씌우게 된다. (컨테이너는 일반적으로 단일 애플리케이션 프로세스를 실행하기 위해 설계되었기 때문에 CMD는 이  시작하는 명령어를 지정한다.)
+
+```bash
+docker run myimage python3 other_script.py
+```
+위 경우 app.py가 아니라 other_script.py가 실행된다.
+
+```bash
+# Dockerfile
+FROM ubuntu:20.04
+COPY init.sh /usr/local/bin/init.sh
+RUN chmod +x /usr/local/bin/init.sh
+CMD ["/usr/local/bin/init.sh"]
+```
+컨테이너 초기화 시 여러 명령어를 실행해야 하는 경우에는 여러 명령어를 포함하는 쉘 스크립트를 작성하고 CMD 지시어에서 이 스크립트를 실행하도록 지정하거나 하나의 CMD에서 쉘 명령어를 && 연산자로 연결할 수 
+
+```bash
+# init.sh
+echo "Initializing..."
+service apache2 start
+service mysql start
+tail -f /dev/null`
+```
+
+```bash
+FROM ubuntu:20.04
+CMD service apache2 start && service mysql start && tail -f /dev/null
+```
+
+### ENTRYPOINT
+CMD와 조합하여 사용할 수 있다. 
+이때 ENTRYPOINT는 기본 명령을 설정하고 CMD는 기본 인자를 설정한다.
+기본 명령어와 인자를 분리할 수 
+
+```bash
+ENTRYPOINT ["python3"]
+CMD ["app.py"]
+```
+
+### ENV
+환경 변수를 설정한다.
+```bash
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+```
+컨테이너 내에서 사용할 환경 변수를 설정한다.
