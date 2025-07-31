@@ -224,6 +224,25 @@ docker kill [OPTIONS] CONTAINER [CONTAINER...]
 이 명령어는 기본적으로 `SIGKILL` 신호를 보내어 컨테이너를 즉시 중지시키며, 컨테이너 내에서 실행 중인 모든 프로세스를 강제로 종료한다.
 `docker stop` 명령어와 달리 `docker kill`은 그레이스풀 셧다운을 시도하지 않는다.
 
+```bash
+docker kill my-container
+docker kill container1 container2 container3
+docker kill 00959afe8c0c
+```
+
+```bash
+docker kill -s SIGTERM my-container
+```
+my-container 컨테이너에 SIGTERM 신호를 보내 종료한다.
+SIGTERM 신호는
+일반적으로 프로세스를 종료할 때 사용되며,
+.
+프로세스
+가 종료 전에 정
+리
+용함
+.
+
 * 그레이스풀 셧다운
   * 프로세스가 종료될 때  작업을 수행할 시간을 주는 방식
   * 프로세스가 현재 처리 중인 작업을 완료하고, 열린 파일이나 네트워크 연결을 닫으며, 필요한 상태를 저장한 후  종료될 수 
@@ -231,4 +250,10 @@ docker kill [OPTIONS] CONTAINER [CONTAINER...]
 
 * 신호(signal)
   * SIGTERM(Signal Terminate)은 운영체제에서 프로세스에 종료를 요청하는 표준 신호이다.
-    * 프로세스에게 종료하라고 요청하며, 프로세스는 이를 받아들이고 필요한 정리 작업을 수행한 후 종료할 수 있다.
+    * 프로세스에게 종료하라고 요청하며 프로세스는 이를 받아들이고 필요한 정리 작업을 수행한 후 종료할 수 있다. (Graceful Shutdown)
+    * SIGTERM은 데이터 손실을 최소화하고 프로세스가 정상적으로 종료할 수 있는 기회를 제공한다.
+    * 프로세스가 이 신호를 무시할 수 있으며, 필요한 경우 SIGKILL 신호로 강제 종료할 수 있다.
+  * SIGKILL(Signal Kill)은 프로세스를 즉시 종료시키는 강제 신호이다.
+    * 프로세스가 신호를 무시할 수 없으며 즉시 종료된다.
+    * 정리 작업 없이 즉시 종료되기 때문에 데이터 손실이나 리소스 누수가 발생할 수 있다.
+    * 주로 응답하지 않는 프로세스를 강제로 종료할 때 사용한다.
