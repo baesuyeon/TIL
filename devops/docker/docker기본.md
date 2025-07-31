@@ -231,17 +231,8 @@ docker kill 00959afe8c0c
 ```
 
 ```bash
-docker kill -s SIGTERM my-container
+docker kill -s SIGTERM my-container 
 ```
-my-container 컨테이너에 SIGTERM 신호를 보내 종료한다.
-SIGTERM 신호는
-일반적으로 프로세스를 종료할 때 사용되며,
-.
-프로세스
-가 종료 전에 정
-리
-용함
-.
 
 * 그레이스풀 셧다운
   * 프로세스가 종료될 때  작업을 수행할 시간을 주는 방식
