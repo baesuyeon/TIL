@@ -211,6 +211,14 @@ docker stop [OPTIONS] CONTAINER [CONTAINER...]
 ### docker rm <컨테이너 이름 또는 ID>
 중지된 컨테이너 삭제
 
+```bash
+docker rm [OPTIONS] CONTAINER [CONTAINER...]
+```
+옵션 정리
+| 옵션            | 설명                                       |
+| -------------- | ---------------------------------------- |
+| `-t`           | 지하기 전에 기다릴 시간(초)를 지정한다.                  |
+
 ### docker kill
 ```bash
 docker kill [OPTIONS] CONTAINER [CONTAINER...]
