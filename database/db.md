@@ -420,3 +420,31 @@ SQLException을 쓰면 어떻게 해야 하나?
 @Transactional 어노테이션에서 rollbackFor 옵션을 제공한다.
 @Transactional(rollbackFor = SQLException.class)
 
+## 스프링 부트의 자동 리소스 등록
+Spring Boot는 Auto Configuration을 통해 다음을 자동 등록한다.
+* DataSource
+  * 내가 직접 Bean을 정의하면 → 자동 설정은 비활성화
+  * 커넥션풀을 제공하는 HikariDataSource
+  * `spring.datasource.url` 속성이 있다면 커넥션 풀 DataSource(HikariDataSource) 생성
+  * `spring.datasource.url` 속성이 없다면 내장 데이터베이스(메모리 DB)를 사용할 수 있는지 확인 (커넥션 풀 없이 임베디드(메모리) DB 사용)
+* PlatformTransactionManager
+  * 어떤 트랜잭션 매니저를 선택할지는 현재 등록된 라이브러리를 보고 판단한다. ex) JpaTransactionManager
+* EntityManagerFactory (JPA 사용 시)
+* JdbcTemplate, TransactionTemplate 등
+
+```text
+Object                            예외도 객체이다. 모든 객체의 최상위 부모는 Object이다.
+ └─ Throwable                     최상위 예외이다.
+     ├─ Exception
+     │   ├─ SQLException          (체크 예외)
+     │   ├─ IOException           (체크 예외)
+     │   └─ RuntimeException      (언체크 예외 / 런타임 예외)
+     │       ├─ NullPointerException
+     │       └─ IllegalArgumentException
+     │
+     └─ Error
+         └─ OutOfMemoryError      (언체크 예외), 애플리케이션에서 복구 불가능한 시스템 예외
+```
+
+예외는 폭탄 돌리기와 같다. 예외를 처리하지 못하면 호출한 곳으로 예외를 계속 던지게 된다.
+잡아서 처리하거나, 처리할 수 없으면 밖으로 던져야 한다.
