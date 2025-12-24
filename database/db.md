@@ -166,7 +166,7 @@ update member set money=500 where id = 10;
 ```
 InnoDB의 경우 UPDATE 실행 순간 자동으로 `Row-level Lock`을 건다. (X Lock (Exclusive Lock) 이 걸림) <br>
 * 대상: id = 10 에 해당하는 row
-* 락 해제 시점: COMMIT 또는 ROLLBACK 시
+* **락 해제 시점: COMMIT 또는 ROLLBACK 시**
 
 세션2는 락이 돌아올 때 까지 대기하게된다.
 락을 무한정 대기하는 것은 아니고 락 대기 시간을 넘어가면 락 타임아웃 오류가 발생한다.
@@ -301,7 +301,7 @@ public class OrderService {
 동작 방식
 클라이언트 요청으로 서비스 로직을 시작한다.
 1. 트랜잭션을 시작하려면 커넥션이 필요하다. 서비스 계층에서 `transactionManager.getTransaction()`을 호출해 트랜잭션을 시작한다.
-2. 트랜잭션을 시작하려면 데이터베이스 커넥션이 필요하기 때문에 트랜잭션 매니저는 내부에서 데이터소스를 통해 커넥션을 생성한다.
+2. 트랜잭션을 시작하려면 데이터베이스 커넥션이 필요하기 때문에 트랜잭션 매니저는 내부에서 **데이터소스를 통해 커넥션**을 생성한다.
 3. 커넥션을 수동 커밋 모드로 변경해서 실제 데이터베이스 트랜잭션을 시작한다.
 4. 트랜잭션 매니저는 트랜잭션이 시작된 커넥션을 트랜잭션 동기화 매니저에 보관한다.
 5. 트랜잭션 동기화 매니저는 쓰레드 로컬에 커넥션을 보관한다. 따라서 멀티 스레드 환경에 안전하게 커넥션을 보관할 수 있다.
@@ -408,7 +408,7 @@ public void service() throws SQLException {
 
 ```text
 JPA → PersistenceException 발생(이미 언체크 예외) → 스프링이 DataAccessException으로 변환(공통 예외 계층)
-```
+```````
 
 ```text
 JdbcTemplate → 내부에서 SQLException 을 잡아서 → DataAccessException으로 변환
@@ -432,6 +432,7 @@ Spring Boot는 Auto Configuration을 통해 다음을 자동 등록한다.
 * EntityManagerFactory (JPA 사용 시)
 * JdbcTemplate, TransactionTemplate 등
 
+## 자바 예외 계층
 ```text
 Object                            예외도 객체이다. 모든 객체의 최상위 부모는 Object이다.
  └─ Throwable                     최상위 예외이다.
@@ -443,8 +444,39 @@ Object                            예외도 객체이다. 모든 객체의 최�
      │       └─ IllegalArgumentException
      │
      └─ Error
-         └─ OutOfMemoryError      (언체크 예외), 애플리케이션에서 복구 불가능한 시스템 예외
+         └─ OutOfMemoryError      (언체크 예외), 애플리케이션에서 복구 불가능한 시스템 예외, 잡으려고 해서는 안된다.
 ```
+
+* Exception 을 상속받으면 체크 예외가 된다.
+  * 예외를 잡아서 처리하지 않으면 항상 throws 에 던지는 예외를 선언해야 한다.
+* RuntimeException 을 상속받으면 언체크 예외가 된다.
+  * 예외를 잡아서 처리하지 않아도 throws 를 생략할 수 있다. (자동으로 예외를 던진다)
 
 예외는 폭탄 돌리기와 같다. 예외를 처리하지 못하면 호출한 곳으로 예외를 계속 던지게 된다.
 잡아서 처리하거나, 처리할 수 없으면 밖으로 던져야 한다.
+대부분의 예외는 복구 불가능한 예외이기 때문에 밖으로 예외를 계속 던져야 한다.
+컨트롤러까지 본인이 처리할 수도 없는 예외를 의존하게 된다는 단점이 있어 웬만하면 예외가 RuntimeException을 상속하도록 하자.
+SQLException 체크 예외라면 런타임 예외로 전환해서 서비스 계층에 던지자.
+
+사용하는 데이터베이스나 접근 기술(JDBC, JPA 등)에 따라 서로 다른 예외가 발생할 수 있다.
+스프링은 데이터 접근과 관련된 예외를 일관된 예외계층(DataAccessException)으로 추상화하여
+애플리케이션 코드가 특정 DB 구현에 의존하지 않도록 한다.
+스프링이 제공하는 데이터 접근 계층의 모든 예외는 런타임 예외이다.
+```text
+RuntimeException
+└─ DataAccessException
+   ├─ NonTransientDataAccessException
+   │  ├─ BadSqlGrammarException
+   │  └─ DataIntegrityViolationException
+   │     └─ DuplicateKeyException
+   │
+   └─ TransientDataAccessException
+      ├─ QueryTimeoutException
+      ├─ OptimisticLockingFailureException
+      └─ PessimisticLockingFailureException
+```
+* `Transient` : 일시적이며 다시 시도하면 성공할 가능성이 있다.
+  * 쿼리 타임아웃, 락과 관련된 오류 등
+
+* `NonTransient` : 일시적이지 않으며 반복해서 실행해도 실패한다.
+  * SQL 문법 오류, 데이터베이스 제약조건 위배 등
