@@ -86,72 +86,160 @@ abstract class FrenchCourseTemplate {
 
 실무와 가까운 예제
 ```kotlin
-abstract class DataProcessor {
-    
-    fun process(data: String) {
-        load(data)
+abstract class ProductTemplateConverter<R> {
 
-        if (isValid(data)) {
-            handle(data)
-            save(data)
-        } else {
-            println("Data is invalid, processing aborted.")
-        }
+  fun convert(products: List<Product>): List<R> =
+    products.mapNotNull { product ->
+      if (!shouldConvertRemoved() && product.isRemoved) return@mapNotNull null
+      if (!shouldConvertHidden() && product.isHidden) return@mapNotNull null
+      if (!shouldConvertBlocked() && product.isBlocked) return@mapNotNull null
+
+      when (product) {
+        is PBProduct -> convertPBProduct(product)
+        is ImportedProduct -> convertImportedProduct(product)
+        is LocalProduct -> convertLocalProduct(product)
+      }
     }
-
-    protected abstract fun load(data: String)
-    protected abstract fun isValid(data: String): Boolean
-    protected abstract fun handle(data: String)
-    protected abstract fun save(data: String)
+  
+  abstract fun convertPBProduct(product: PBProduct): R?
+  abstract fun convertImportedProduct(product: ImportedProduct): R?
+  abstract fun convertLocalProduct(product: LocalProduct): R?
+  
+  open fun shouldConvertRemoved(): Boolean = false
+  open fun shouldConvertHidden(): Boolean = false
+  open fun shouldConvertBlocked(): Boolean = false
 }
 ```
-process() 메서드는 알고리즘의 뼈대(흐름)를 정의하고
-load, isValid, handle, save 는 변경 가능한 세부 단계를 담당한다.
+
+```kotlin
+class ProductDtoV1TemplateConverter : ProductTemplateConverter<ProductDtoV1>() {
+
+    override fun convertPBProduct(product: PBProduct): ProductDtoV1 =
+        ProductDtoV1(id = product.id)
+
+    override fun convertImportedProduct(product: ImportedProduct): ProductDtoV1 =
+        ProductDtoV1(id = product.id)
+
+    override fun convertLocalProduct(product: LocalProduct): ProductDtoV1 =
+        ProductDtoV1(id = product.id)
+
+    override fun shouldConvertRemoved(): Boolean = false
+    override fun shouldConvertHidden(): Boolean = false
+    override fun shouldConvertBlocked(): Boolean = false
+}
+
+val convertedProducts: List<ProductDtoV1> = ProductDtoV1TemplateConverter.convert(products)
+```
+
+```kotlin
+class ProductDtoV2TemplateConverter : ProductTemplateConverter<ProductDtoV2>() {
+
+    override fun convertPBProduct(product: PBProduct): ProductDtoV2 =
+        ProductDtoV2(id = product.id)
+
+    override fun convertImportedProduct(product: ImportedProduct): ProductDtoV2 =
+        ProductDtoV2(id = product.id)
+
+    override fun convertLocalProduct(product: LocalProduct): ProductDtoV2 =
+        ProductDtoV2(id = product.id)
+
+    override fun shouldConvertRemoved(): Boolean = false
+    override fun shouldConvertHidden(): Boolean = false
+    override fun shouldConvertBlocked(): Boolean = false
+}
+
+val convertedProducts: List<ProductDtoV2> = ProductDtoV2TemplateConverter.convert(products)
+```
+
+convert() 메서드는 알고리즘의 뼈대(흐름)를 정의하고
+convertPBProduct, convertImportedProduct, convertLocalProduct, shouldConvertRemoved 등은 변경 가능한 세부 단계를 담당한다.
 즉 전체 구조는 고정하고, 구현만 교체하는 템플릿 메서드 패턴이다.
 
 같은 구조를 상속 없이, 람다(함수)를 주입하는 방식으로 표현할 수도 있다.
+
 ```kotlin
-object DataProcessor {
+class ProductConverter<R>(
+  private val doOnPBProduct: (PBProduct) -> R?,
+  private val doOnImportedProduct: (ImportedProduct) -> R?,
+  private val doOnLocalProduct: (LocalProduct) -> R?,
+  private val convertRemoved: Boolean,
+  private val convertHidden: Boolean,
+  private val convertBlocked: Boolean,
+) {
 
-    fun process(
-        raw: String,
-        load: (String) -> String,
-        validate: (String) -> Boolean,
-        handle: (String) -> String,
-        save: (String) -> Unit
-    ) {
-        val loaded = load(raw)
+  fun convert(products: List<Product>): List<R> =
+    products.mapNotNull { product ->
+      if (!convertRemoved && product.isRemoved) return@mapNotNull null
+      if (!convertHidden && product.isHidden) return@mapNotNull null
+      if (!convertBlocked && product.isBlocked) return@mapNotNull null
 
-        if (validate(loaded)) {
-            val processed = handle(loaded)
-            save(processed)
-        } else {
-            println("Data is invalid, processing aborted.")
-        }
+      when (product) {
+        is PBProduct -> doOnPBProduct(product)
+        is ImportedProduct -> doOnImportedProduct(product)
+        is LocalProduct -> doOnLocalProduct(product)
+      }
     }
 }
 ```
 
 ```kotlin
-DataProcessor.process(
-    raw = "my-data",
-    load = { data ->
-        println("Loading $data")
-        data.trim()
-    },
-    validate = { it.isNotBlank() },
-    handle = { data ->
-        println("Processing $data")
-        data.uppercase()
-    },
-    save = { result ->
-        println("Saving $result")
-    }
-)
+class ProductConverterBuilder<R> {
+
+    var doOnPB: (PBProduct) -> R? = { null } // 기본 값을 정의해서 선택적으로 전달 가능
+    var doOnImported: (ImportedProduct) -> R? = { null }
+    var doOnLocal: (LocalProduct) -> R? = { null }
+
+    var convertRemoved: Boolean = false
+    var convertHidden: Boolean = false
+    var convertBlocked: Boolean = false
+
+    fun build(): ProductConverter<R> =
+        ProductConverter(
+            doOnPB = doOnPB,
+            doOnImported = doOnImported,
+            doOnLocal = doOnLocal,
+            convertRemoved = convertRemoved,
+            convertHidden = convertHidden,
+            convertBlocked = convertBlocked,
+        )
+}
+
+fun <R> productConverter(block: ProductConverterBuilder<R>.() -> Unit): ProductConverter<R> =
+    ProductConverterBuilder<R>().apply(block).build()
 ```
+
+```kotlin
+val productDtoV1Converter = productConverter<ProductDtoV1> {
+    doOnPBProduct = { product -> ProductDtoV1(id = product.id) }
+    doOnImportedProduct = { product -> ProductDtoV1(id = product.id) }
+    doOnLocalProduct = { product -> ProductDtoV1(id = product.id) }
+
+    convertRemoved = true
+    convertHidden = false
+    convertBlocked = false
+}
+
+val convertedProducts: List<ProductDtoV1> = productDtoV1Converter.convert(products)
+```
+
+```kotlin
+val productDtoV2Converter = productConverter<ProductDtoV2> {
+    // PB 상품을 개념적으로 지원하지 않는 컨버터
+    // doOnPBProduct = { product -> ProductDtoV2(id = product.id) }
+    doOnImportedProduct = { product -> ProductDtoV2(id = product.id) } 
+    doOnLocalProduct = { product -> ProductDtoV2(id = product.id) }
+
+    convertRemoved = true
+    convertHidden = true
+    convertBlocked = true
+}
+
+val convertedProducts: List<ProductDtoV2> = productDtoV2Converter.convert(products)
+```
+
 전통적인 템플릿 메서드 패턴을 함수형 스타일로 풀어낸 구조이다.
 템플릿 메서드 패턴은 상속 기반이고 람다 방식은 조합 기반이다. 
-요즘은 조합을 더 선호하는 흐름이다.
+**요즘은 조합을 더 선호하는 흐름이다.**
 
 ## 상속보다는 조합
 상속(is-a)
@@ -180,3 +268,59 @@ Class
   * 원하는 구현체를 끼워넣을 수 있다.
   * 구현체는 런타임에 교체가 가능하다.
   * 객체의 내부 구현이 철저히 숨겨진다.
+
+상속 코드
+```kotlin
+class ProductDtoV3TemplateConverter : ProductTemplateConverter<ProductDtoV3>() {
+    override fun convertPBProduct() { /* 수정 */ }
+    override fun convertImportedProduct() { /* 기존 로직 복붙 */ }
+    override fun convertLocalProduct() { /* 기존 로직 복붙 */ }
+}
+```
+
+조합 코드
+```kotlin
+val v3 = productConverter {
+    doOnPBProduct = { /* 수정 */ }
+    doOnImportedProduct = v1.doOnImportedProduct
+    doOnLocalProduct = v1.doOnLocalProduct
+}
+```
+PB 상품만 다르게 처리하고 싶은 요구사항이 있는 경우
+상속 로직에서는 구조상 나머지도 다시 구현해야하지만
+조합 로직에서는 부분만 교체할 수 있다. (변경의 유연성)
+
+## 싱글톤(Singleton) 패턴
+특정 클래스의 인스턴스가 단 하나만 존재해야 할 때 필요한 패턴이다.
+(인스턴스를 새로 생성한다는 것은 자원(메모리, 시간)을 소모하는 것이다)
+
+```java
+public class Theme {
+    private static Theme instance;
+    private String themeColor;
+
+    private Theme() {
+        this.themeColor = "light"; // Default theme
+    }
+
+    public static Theme getInstance() {
+        if (instance == null) {
+            instance = new Theme();
+        }
+        return instance;
+    }
+
+    public String getThemeColor() {
+        return themeColor;
+    }
+    public void setThemeColor(String themeColor) {
+        this.themeColor = themeColor;
+    }
+}
+```
+
+```text
+Theme.getInstance().setThemeColor("dark");
+```
+테마는 딱 하나만 존재해야하는 개념이다.
+생성자를 사용할 수 없기 때문에 외부에서는 Theme 클래스의 인스턴스를 만들 수 없다.
