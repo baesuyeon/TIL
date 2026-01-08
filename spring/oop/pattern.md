@@ -185,9 +185,9 @@ class ProductConverter<R>(
 ```kotlin
 class ProductConverterBuilder<R> {
 
-    var doOnPB: (PBProduct) -> R? = { null } // 기본 값을 정의해서 선택적으로 전달 가능
-    var doOnImported: (ImportedProduct) -> R? = { null }
-    var doOnLocal: (LocalProduct) -> R? = { null }
+    var doOnPBProduct: (PBProduct) -> R? = { null } // 기본 값을 정의해서 선택적으로 전달 가능
+    var doOnImportedProduct: (ImportedProduct) -> R? = { null }
+    var doOnLocalProduct: (LocalProduct) -> R? = { null }
 
     var convertRemoved: Boolean = false
     var convertHidden: Boolean = false
@@ -324,3 +324,249 @@ Theme.getInstance().setThemeColor("dark");
 ```
 테마는 딱 하나만 존재해야하는 개념이다.
 생성자를 사용할 수 없기 때문에 외부에서는 Theme 클래스의 인스턴스를 만들 수 없다.
+
+## 상태(State) 패턴
+객체의 내부 상태에 따라 동일한 메서드의 행동이 달라질 때 사용하는 패턴이다.
+`play()`, `stop()` 같은 메서드가 현태 상태에 따라 다른 행동을 해야할 때 적합하다.
+
+다음과 같은 상황에서 상태 패턴을 고려할 수 있다.
+* 상태 값에 따라 if/else, switch, when 분기가 계속 늘어날 때
+* 상태 전이 규칙이 복잡해질 때
+* “이 상태에서 이 행동이 가능한가?”를 코드로 추적하기 어려워질 때
+* 상태별로 검증, 정책이 다를 때
+
+상태 패턴을 적용하지 않은 코드
+```java
+public class VideoPlayer {
+    private String state;
+
+    public VideoPlayer() {
+        this.state = "Stopped";
+    }
+
+    public void play() {
+        if (state.equals("Stopped")) {
+            System.out.println("Starting the video.");
+            state = "Playing";
+        } else if (state.equals("Playing")) {
+            System.out.println("Video is already playing.");
+        } else if (state.equals("Paused")) {
+            System.out.println("Resuming the video.");
+            state = "Playing";
+        }
+    }
+
+    public void stop() {
+        if (state.equals("Playing")) {
+            System.out.println("Pausing the video.");
+            state = "Paused";
+        } else if (state.equals("Paused")) {
+            System.out.println("Stopping the video.");
+            state = "Stopped";
+        } else if (state.equals("Stopped")) {
+            System.out.println("Video is already stopped.");
+        }
+    }
+
+    public static void main(String[] args) {
+        VideoPlayer player = new VideoPlayer();
+        
+        player.play();   // "Starting the video."
+        player.play();   // "Video is already playing."
+        player.stop();   // "Pausing the video."
+        player.play();   // "Resuming the video."
+        player.stop();   // "Pausing the video."
+        player.stop();   // "Stopping the video."
+        player.stop();   // "Video is already stopped."
+    }
+}
+```
+상태 패턴을 적용하지 않은 코드의 문제점
+* 상태가 늘어날수록 if/else 분기가 늘어난다.
+* 상태 별 로직이 여러 메서드에 흩어진다.
+* Paused 상태에서 play 하면 뭐하지?를 코드 전체에서 찾아야 한다.
+
+상태 패턴은 상태를 값(enum, 문자열)으로 관리하지 않는다.
+상태 자체를 객체로 만들고 행동을 그 안에 넣는다.
+
+상태 패턴을 적용한 코드
+```java
+public interface State {
+    void play(VideoPlayer player);
+    void stop(VideoPlayer player);
+}
+```
+모든 상태가 가져야 할 행동의 공통 인터페이스
+
+```java
+public class StoppedState implements State {
+    @Override
+    public void play(VideoPlayer player) {
+        System.out.println("Starting the video.");
+        player.setState(new PlayingState());
+    }
+
+    @Override
+    public void stop(VideoPlayer player) {
+        System.out.println("Video is already stopped.");
+    }
+}
+
+public class PlayingState implements State {
+    @Override
+    public void play(VideoPlayer player) {
+        System.out.println("Video is already playing.");
+    }
+
+    @Override
+    public void stop(VideoPlayer player) {
+        System.out.println("Pausing the video.");
+        player.setState(new PausedState());
+    }
+}
+
+public class PausedState implements State {
+    @Override
+    public void play(VideoPlayer player) {
+        System.out.println("Resuming the video.");
+        player.setState(new PlayingState());
+    }
+
+    @Override
+    public void stop(VideoPlayer player) {
+        System.out.println("Stopping the video.");
+        player.setState(new StoppedState());
+    }
+}
+```
+Stopped, Playing, Paused 상태를 문자열이나 enum이 아니라 클래스로 표현한다.
+그리고 상태별 행동을 그 클래스 안에 넣는다.
+
+상태 패턴을 적용하면 상태별 로직이 한 곳에 모인다.
+각 상태 클래스가 “이 상태에서 가능한 행동”과 “다음 상태”를 스스로 알고 있다.
+하나의 상태에서 다른 상태로 전환할 때 대상 상태의 새 객체를 생성자로 만들어 넣어준다.
+
+```java
+public class VideoPlayer {
+    private State state;
+
+    public VideoPlayer() {
+        // 초기 상태
+        this.state = new StoppedState();
+    }
+
+    public void setState(State state) {
+        this.state = state;
+    }
+
+    public void play() {
+        state.play(this);
+    }
+
+    public void stop() {
+        state.stop(this);
+    }
+}public interface State {
+    void play(VideoPlayer player);
+    void stop(VideoPlayer player);
+}
+```
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        VideoPlayer player = new VideoPlayer();
+        
+        player.play();   // "Starting the video."
+        player.play();   // "Video is already playing."
+        player.stop();   // "Pausing the video."
+        player.play();   // "Resuming the video."
+        player.stop();   // "Pausing the video."
+        player.stop();   // "Stopping the video."
+        player.stop();   // "Video is already stopped."
+    }
+}
+```
+
+## 옵저버(Observer) 패턴
+옵저버(관찰자) 패턴은 한 객체의 상태가 변경되면
+그 변화를 구독하고 있는 다른 객체들(Observer)에게 자동으로 알림을 보내는 패턴이다.
+
+왜 옵저버 패턴이 필요할까?
+옵저버 패턴이 없으면 보통 이런 구조가 된다
+
+> “혹시 방 나왔어요?” <br>
+“지금은요?” <br>
+“지금은요?” <br>
+“지금은요?” <br>
+
+클라이언트가 주기적으로 물어보는 Polling 방식은 불필요한 요청이 계속 발생하여
+네트워크, 자원이 낭비되며 응답 타이밍이 늦어질 수 있어 비효율적이다.
+
+공인중개사 예제로 이해하기
+* subscribe()      : 방 나오면 알려주세요
+* notifyObservers(): 방 나왔어요!
+* unsubscribe()    : 이제 괜찮아요. 안 알려주셔도 돼요
+
+옵저버 패턴 구현하기
+```java
+public interface Subject {
+    void subscribe(Observer observer);
+    void unsubscribe(Observer observer);
+    void notifyObservers(Event event);
+}
+```
+
+```java
+public interface Observer {
+    void update(Event event);
+}
+```
+
+```java
+public class RealEstateOffice implements Subject {
+
+    private final List<Observer> observers = new ArrayList<>();
+
+    @Override
+    public void subscribe(Observer observer) {
+        observers.add(observer);
+    }
+
+    @Override
+    public void unsubscribe(Observer observer) {
+        observers.remove(observer);
+    }
+
+    @Override
+    public void notifyObservers(Event event) {
+        for (Observer observer : observers) {
+            observer.update(event);
+        }
+    }
+
+    // 방이 새로 나왔을 때 호출되는 메서드
+    public void newRoomArrived(String roomInfo) {
+        // 로직 수행
+
+        Event event = new Event(
+                "NEW_ROOM",
+                "📢 공인중개사: 방 나왔어요! 👉 " + roomInfo
+        );
+
+        notifyObservers(event);
+    }
+}
+```
+옵저버 패턴을 사용하면 좋은 경우
+* 구독자 수가 제한적
+* 이벤트 발생 빈도가 적당
+* 옵저버 로직이 가볍고 빠름
+* 비동기 처리 가능
+
+옵저버 패턴을 사용하면 좋지 않은 경우
+* 구독자 수 수백~수천개가 되는 경우
+* 이벤트 발생 빈도 높음
+* 옵저버 안에서 DB/외부 호출
+* 동기 호출 구조
+→ 이 경우는 메시지 큐 구조를 대신 고려할 수 있다.
