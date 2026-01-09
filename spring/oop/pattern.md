@@ -522,6 +522,8 @@ public interface Observer {
     void update(Event event);
 }
 ```
+인터페이스 이름은 `Listener`라는 네이밍을 사용하기도 한다.
+함수 이름은 `on(행위)`으로 시작하는 네이밍을 사용하기도 한다. (onEventOccurred, onUpdated)
 
 ```java
 public class RealEstateOffice implements Subject {
@@ -566,7 +568,86 @@ public class RealEstateOffice implements Subject {
 
 옵저버 패턴을 사용하면 좋지 않은 경우
 * 구독자 수 수백~수천개가 되는 경우
+  * 옵저버 패턴은 O(N) 구조로 모든 구독자를 순회하며 알림 메서드를 호출하기 때문에 구독자가 많아질수록 CPU, 메모리 자원이 소모된다.
 * 이벤트 발생 빈도 높음
+  * 구독자 수도 많은데 발생 빈도도 높다면 병목 현상이 발생할 수 있음
 * 옵저버 안에서 DB/외부 호출
+  * 네트워크 지연이나 데이터베이스 락(Lock) 등으로 인해 지연이 발생할 수 있다.
 * 동기 호출 구조
+  * 1번 구독자가 처리를 완료해야 2번 구독자에게 알림을 보낼 수 있는 경우 1번 구독자에서 시간이 오래 걸리면 뒤에 있는 모든 구독자는 대기하게 된다.
 → 이 경우는 메시지 큐 구조를 대신 고려할 수 있다.
+
+## 프록시(Proxy) 패턴
+프록시는 클라이언트와 실제 객체 사이에 존재하며
+클라이언트는 실제 객체 대신 프록시 객체에 작업을 요청한다.
+프록시 객체는 해당 요청에 대해 부가기능을 수행한다.
+
+적용 사례
+* 접근 권한 체크(Spring Security)
+  * 클라이언트의 인증 상태나 권한을 확인하고 권한이 있을 경우에만 실제 객체의 메서드를 호출
+* 캐싱(@Cacheable)
+  * 프록시가 캐시 데이터를 가지고 있다면 실제 객체를 호출하지 않고 캐시된 데이터를 바로 반환
+* 로깅
+  * 클라이언트의 요청이 실제 객체의 특정 메서드를 호출하기 전후에 해당 요청 정보(메서드 이름, 인자, 실행 시간 등)를 로그로 기록
+* 트랜잭션(@Transactional)
+
+```java
+// 클라이언트는 인터페이스에 의존하기 때문에 자신이 프록시와 통신하는지 실제 객체와 통신하는지 알 필요가 없다(알 수 없다)
+public interface Service {
+    void doSomething();
+}
+
+public class RealService implements Service {
+    public void doSomething() {  }
+}
+
+// 프록시 객체는 실제 객체를 참조한다.
+public class ProxyService implements Service {
+    private final Service target;
+
+    public void doSomething() {
+        // before
+        target.doSomething();
+        // after
+    }
+}
+```
+
+### JDK Proxy vs CGLIB Proxy
+프록시 패턴을 개발자가 직접 구현하지 않고 런타임에
+프록시를 자동으로 일관되게 적용하기 위해 나온 기술이다.
+
+JDK Proxy: 인터페이스 기반 프록시
+```text
+[ Client ]
+    |
+    v
+[ Service 인터페이스 ]
+    |
+    v
+[ JDK Proxy (가짜 구현체) ]
+    | --> invocationHandler.invoke()
+    v
+[ RealService ]
+```
+JDK Proxy는 모든 메서드 호출을 InvocationHandler.invoke()로 위임한 뒤
+그 안에서 실제 RealService 메서드를 실행한다.
+
+JDK Proxy는 인터페이스가 반드시 필요하다는 단점이 있다.
+프록시 때문에 인터페이스를 만드는 경우가 생기게된다.
+
+CGLIB Proxy: 클래스 상속 기반 프록시
+```text
+[ Client ]
+    |
+    v
+[ Proxy extends RealService (가짜 자식 클래스(CGLIB)) ]
+    |
+    v
+[ RealService ]
+```
+CGLIB Proxy는 실제 클래스를 상속하여 프록시를 생성하는 방식이기 때문에 인터페이스가 없어도 적용할 수 있다.
+그러나 Kotlin의 클래스는 기본적으로 final이어서 상속이 불가능하므로 CGLIB 프록시를 사용하려면 open 키워드를 사용하거나 allOpen 플러그인을 통해 자동으로 상속 가능하게 설정해야 한다.
+
+## 어댑터(Adapter) 패턴
+
