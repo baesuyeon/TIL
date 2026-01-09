@@ -647,7 +647,8 @@ CGLIB Proxy: 클래스 상속 기반 프록시
 [ RealService ]
 ```
 CGLIB Proxy는 실제 클래스를 상속하여 프록시를 생성하는 방식이기 때문에 인터페이스가 없어도 적용할 수 있다.
-그러나 Kotlin의 클래스는 기본적으로 final이어서 상속이 불가능하므로 CGLIB 프록시를 사용하려면 open 키워드를 사용하거나 allOpen 플러그인을 통해 자동으로 상속 가능하게 설정해야 한다.
+그러나 Kotlin의 클래스는 기본적으로 final이어서 상속이 불가능하므로 CGLIB 프록시를 사용하려면 open 키워드를 사용하거나 
+allOpen 플러그인을 통해 자동으로 상속 가능하게 설정해야 한다. (@Component, @Service, @Transactional등 애노테이션 붙은 클래스들을 자동으로 open으로 바꿔줌)
 
 ## 어댑터(Adapter) 패턴
 
