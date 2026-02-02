@@ -1,3 +1,8 @@
+> 출처 <br />
+> - https://d2.naver.com/helloworld/6080222 <br />
+> - https://engineering.linecorp.com/ko/blog/reactive-streams-with-armeria-1
+
+
 # 서블릿 컨테이너와 스프링 ✅
 * 서블릿 컨테이너(WAS): HTTP 요청을 받고 응답하는 기본 인프라 (Tomcat, Jetty), WAS의 주요 엔진
 * 스프링 프레임워크: 서블릿 컨테이너 안에서 비즈니스 로직을 처리하는 엔진
@@ -183,3 +188,121 @@ API의 경우 이미 고성능 Non-blocking 지원이(WebClient, gRPC)가 아주
 요청부터 응답까지를 블로킹 없이 연결하는 엔드투엔드 논블로킹 처리가 쉽고 효과적이다.
 
 따라서 MSA 간 통신에서 WebFlux가 훨씬 더 큰 가치를 인정받고 있다.
+무조건 MVC보다 좋다기보다 I/O 비중이 높고 동시성이 중요한 서비스에 적합하다.
+
+## WebFlux 요청 흐름
+Spring WebFlux는 더이상 WAS가 필요하지 않아 Netty를 사용하며
+Project Reactor를 통해서 Reactive Programming을 지원한다.
+
+Project Reactor는 Reactive Streams의 구현체이다.
+Reactive Streams는 단순히 JVM 기반에서 Async Non-Blocking 처리를 위한 스펙을 명세한 것이다.
+
+```text
+Client
+ → Netty (Event Loop), 커피 주문을 넘기자마자 바로 다음 손님을 받는다.
+ → HttpHandler, HTTP 요청/응답을 ServerHttpRequest ServerHttpResponse로 랩핑
+ → WebFilter Chain, 공통 처리, 인증/인가, 로깅, 헤더 처리, 공통 전/후처리
+ → WebHandler, =DispatcherHandler 요청을 어떤 핸들러(@Controller, HandlerFunction) 가 처리할지 결정
+ → HandlerFunction / @Controller
+ → Mono / Flux
+ → Spring subscribe
+ → Response write
+```
+
+Spring WebFlux는 기존 Spring MVC와 동일하게 애너테이션 기반으로 설정할 수 있다. 
+(@RequestMapping, @ResponseBody, @PathVariable 등 애너테이션이 동일하게 동작한다)
+결정적인 차이점은 바로 반환 타입이다.
+
+Spring MVC에서는 String, List와 같은 일반적인 Plain Object를 반환할 수 있지만
+Spring WebFlux에서는 이러한 객체를 직접 반환할 수 없고 반드시 Publisher 타입으로 감싸서 반환해야 한다.
+
+Mono와 Flux는 모두 Project Reactor의 Publisher Object이다.
+컨트롤러가 Publisher를 반환해야만 Subscriber가 처리 가능한 만큼만 데이터를 요청하는 Backpressure(request(n), cancel) 메커니즘을 적용할 수 있다.
+
+Spring WebFlux에서는 컨트롤러가 Publisher를 반환하면 
+HTTP 응답을 실제로 쓰는 시점에 프레임워크가 이를 subscribe한다.
+이 과정에서 Netty는 HTTP 응답 버퍼 상태를 기준으로 request(n)을 조절하며 이를 통해 네트워크 레벨의 Backpressure를 구현한다.
+
+```text
+Mono<T>  : 0 또는 1개의 데이터 (단일 결과값을 비동기로 받는지)
+Flux<T>  : 0 ~ N개의 데이터 (데이터가 스트림 형태로 흐름)
+```
+
+Mono<List<T>> vs Flux<T>
+둘다 여러 개의 요소가 포함될 수 있음을 의미하지만 용도가 조금 다르다.
+Mono<List<T>>: 여러개의 요소가 한번에 반환됨을 의미
+Flux<T>: 여러개의 요소가 Stream 형태로 반환됨
+
+## Reactive Streams 란?
+기존 옵저버 패턴에서는 publisher가 subscriber의 상태를 고려하지 않고 데이터를 전달하는데만 충실했다.
+만약 publisher가 1초 동안 100개의 메시지를 보내는데 subscriber는 1초에 10개밖에 처리하지 못한다면 
+큐(queue)를 이용해서 대기 중인 이벤트를 저장해야 한다.
+
+하지만 서버의 메모리는 한정적이기 때문에 
+* 고정 길이 버퍼를 사용할 때
+  * 버퍼가 가득 차면 신규 메시지를 거절하거나 재요청해야 하고
+  * 이 과정에서 추가적인 네트워크 통신과 CPU 연산 비용이 발생한다.
+
+* 가변 길이 버퍼를 사용할 때
+  * 버퍼 크기에 제한이 없어 
+  * out of memory 에러가 발생할 수 있다.
+
+Backpressure는 이러한 문제를 해결하기 위한 메커니즘으로
+Publisher가 데이터를 일방적으로 전달하는 대신 Subscriber가 처리 가능한 만큼만 요청하도록 한다.
+데이터의 크기를 Subscriber가 결정한다.
+
+## Reactive Streams API
+```text
+public interface Publisher<T> {
+   public void subscribe(Subscriber<? super T> s);
+}
+ 
+public interface Subscriber<T> {
+   public void onSubscribe(Subscription s);
+   public void onNext(T t);
+   public void onError(Throwable t);
+   public void onComplete();
+}
+ 
+public interface Subscription {
+   public void request(long n);
+   public void cancel();
+}
+```
+* Publisher에는 Subscriber의 구독을 받기 위한 subscribe API 하나만 존재한다.
+* Subscriber에는 
+  * 전달 받은 데이터를 처리하기 위한 `onNext`
+  * 에러를 처리하는 `onError`
+  * 작업 완료 시 사용하는 `onComplete`
+  * 그리고 매개 변수로 Subscription을 받는 `onSubscribe` API가 있다.
+    * Subscription은 n개의 데이터를 요청하기 위한 `request`와 
+    * 구독을 취소하기 위한 `cancel` API가 있다.
+
+Reactive Streams에서 위 API를 사용하는 흐름
+* Subscriber가 subscribe()를 호출하여 Publisher에게 구독을 요청한다.
+* Publisher는 onSubscribe()를 호출하여 Subscriber에게 Subscription을 전달한다.
+* 이제 Subscription은 Subscriber와 Publisher 간 통신의 매개체가 된다. Subscriber는 Publisher에게 직접 데이터 요청을 하지 않고 Subscription을 통해서만 통신한다.
+* Subscription의 Subscription.request(n)을 호출하여 Publisher에게 자신이 처리 가능한 만큼의 데이터 개수를 요청한다.(ex request(3) or 구독 취소 cancel)
+* Publisher는 요청받은 개수만큼 onNext()를 호출해 데이터를 전달한다.
+* 모든 데이터 처리가 완료되면 onComplete(), 처리 중 오류가 발생하면 onError() 시그널을 전달한다.
+
+Reactive Streams에서는 Subscriber가 request(n)을 호출하기 전까지 Publisher는 어떤 데이터도 전송할 수 없다.
+즉 onNext()는 request(n) 이전에 호출될 수 없다.
+
+Backpressure는 Subscriber가 처리 가능한 만큼만 데이터를 요청하는 메커니즘이다.
+맛집에서 음식을 막 내보내는게 아니라 손님이 "이제 한 접시 더 주세요"라고 말할 때만 내보내는 것이다.
+
+Reactive Streams의 구현체 살펴보기
+* 순수 연산: RxJava, Reactor Core
+* 저장소의 데이터를 Reactive Streams로 조회: ReactiveMongo
+* 웹 프로그래밍과 연결된 Reactive Streams: Armeria, Spring WebFlux
+
+### Cold / Hot Publisher
+* Cold Publisher
+  * 구독(subscribe)이 발생할 때마다 데이터 생산이 새로 시작되는 Publisher이다.
+  * 각 구독자는 독립적인 데이터 흐름을 가진다.
+  * 예: HTTP 요청(WebClient), DB 조회
+
+* Hot Publisher
+  * 이미 생성 및 전송되고 있는 데이터를 구독자가 중간부터 받아보는 Publisher이다.
+  * 예: 실시간 이벤트 스트림, 센서 데이터
