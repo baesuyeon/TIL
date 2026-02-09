@@ -3,7 +3,7 @@
 > - https://engineering.linecorp.com/ko/blog/reactive-streams-with-armeria-1
 
 
-# 서블릿 컨테이너와 스프링 ✅
+# 서블릿 컨테이너와 WebFlux ✅
 * 서블릿 컨테이너(WAS): HTTP 요청을 받고 응답하는 기본 인프라 (Tomcat, Jetty), WAS의 주요 엔진
 * 스프링 프레임워크: 서블릿 컨테이너 안에서 비즈니스 로직을 처리하는 엔진
 
@@ -86,6 +86,8 @@ I/O 대기 시간이 많은 서비스(마이크로서비스 간 통신 등)에�
   * 이벤트 루프(Event Loop) 기반으로 논블로킹 I/O 처리
     * 서버 엔진의 논블로킹 I/O의 대상
       * 네트워크 IO(네트워크를 통해 데이터를 읽고(Read) 쓰는(Write) 모든 과정), 소켓, TCP 연결, HTTP 패킷
+    * 네트워크에서 언제 데이터가 도착할지 알 수 없는 대기 상태에 머무르지 않고 데이터가 준비된 시점에만 처리한다.
+    * 이벤트 루프는 I/O 멀티플렉싱을 이용해 여러 소켓의 상태를 감시하고 준비된 I/O 이벤트만 순차적으로 처리한다.
   * 서블릿 표준에 의존하지 않음
 * Spring WebFlux
   * 논블로킹 서버 위에서 비즈니스 로직을 처리하는 리액티브 웹 프레임워크
@@ -97,10 +99,20 @@ I/O 대기 시간이 많은 서비스(마이크로서비스 간 통신 등)에�
 논블로킹 HTTP 서버(Netty/Jetty/Undertow): 서블릿 표준에 얽매이지 않고, 이벤트 루프(Event Loop) 기반으로 네트워크 I/O를 처리하는 고성능 엔진 <br>
 스프링 WebFlux: 리액티브 스트림(Reactive Streams) 표준을 바탕으로 비동기 로직을 처리하는 프레임워크
 
+## Netty + Spring WebFlux 흐름
 * 사용자가 HTTP 요청을 보낸다.
-* 서버 엔진(Netty)이 요청을 받고 이를 스프링이 제공하는 DispatcherHandler(HttpHandler)에게 전달한다.
-* DispatcherHandler가 요청을 받아 적절한 컨트롤러(Handler)를 찾아 로직을 실행한다.
-* 모든 과정은 **비동기(Mono/Flux)** 로 처리되어 결과가 나올 때까지 스레드가 대기하지 않고 다른 요청을 처리하러 떠난다.
+* 논블로킹 HTTP 서버(Netty)가 요청을 수신한다.
+* Netty의 **Event Loop 스레드**가 요청을 수신하고 `ServerWebExchange`(요청/응답 객체)를 만들면
+* 먼저 WebFilter 체인을 거쳐 요청 전 처리를 수행한 뒤 (체이닝 가능)
+* 이를 Spring WebFlux의 진입점인 DispatcherHandler(HttpHandler)에게 전달한다.
+* **DispatcherHandler**가 요청을 받아 HandlerMapping을 통해 처리할 핸들러를 찾는다.
+* HandlerAdapter가 실제 핸들러(컨트롤러)를 찾아 Reactive 처리 흐름(Mono/Flux)을 구성한다.
+  * 컨트롤러는 Mono/Flux를 반환만하고
+  * Spring WebFlux는 HTTP 응답을 써야하는 시점이 오면 내부에서 `subscribe()` 를 호출한다.
+  * 그때부터 Reactive 파이프라인이 실제 실행된다.
+* 모든 과정은 **비동기(Mono/Flux)** 로 처리되어 네트워크 I/O나 외부 작업 결과를 기다리는 동안 스레드는 블로킹되지 않고 이벤트 루프로 반환되어 다른 요청을 처리한다.
+* 결과가 준비되면 이벤트 루프를 통해 동일한 처리 흐름이 다시 재개되어 응답을 전송한다.
+* 응답 생성 및 WebFilter 후처리를 수행한 뒤 최종 응답을 전송한다.
 
 ## DispatcherHandler
 모든 HTTP 요청을 가장 먼저 받는 스프링 WebFlux의 핵심 관문이다. (프론트 핸들러) 
@@ -134,7 +146,7 @@ DB나 외부 API 응답이 올 때까지 스레드는 차단(Blocking) 상태로
 Spring MVC와 가장 큰 차이점 <br >
 Spring MVC처럼 요청마다 스레드를 할당하는 모델이 아니라,
 소수의 Event Loop 스레드가 다수의 요청을 동시에 관리하는 구조이다.
-네트워크 I/O는 논블로킹 방식으로 처리되어 특정 요청의 I/O 대기 시간이 스레드를 점유하지 않는다.
+네트워크 I/O는 논블로킹 방식으로 처리되어 **특정 요청의 I/O 대기 시간이 스레드를 점유하지 않는다.**
 
 ## 컨텍스트 스위칭
 CPU는 한번에 딱 하나의 스레드만 실행할 수 있다.
@@ -142,7 +154,6 @@ CPU는 한번에 딱 하나의 스레드만 실행할 수 있다.
 CPU가 하던 일을 저장하고 새로운 일을 불러오는 과정을 컨텍스트 스위칭이라고 하는데
 Spring MVC에서는 요청 하나당 스레드 하나를 할당하기 때문에 동시 접속자가 늘어날수록 생성된 스레드들 사이의 컨텍스트 스위칭 비용이 증가하여 CPU 자원이 낭비될 수 있다.
 Spring WebFlux는 스레드 개수를 아주 적게(CPU 코어 수와 비슷)유지 하기 때문에 CPU가 스레드를 갈아치울 일이 훨씬 적어 컨텍스트 스위칭 오버에드를 줄인다.
-
 
 ## WebFlux 생명주기와 구성 요소
 WebFlux는 서블릿 API를 사용하지 않으므로 init(), service(), destroy() 같은 서블릿 생명주기를 따르지 않는다. <br >
@@ -154,24 +165,13 @@ WebFlux에서는 HTTP 요청을 처리하는 흐름이 Reactor(Mono, Flux)의 �
 * OnComplete / OnError: 성공적으로 완료되거나 에러가 발생하여 스트림이 종료되었음을 알리는 신호
   * 커피 다 나왔어요(OnComplete), 재료가 떨어졌어요 (OnError)
 
-## WebFlux 전체 요청 흐름
-
-1. 사용자가 HTTP 요청을 보낸다.
-2. 논블로킹 HTTP 서버(Netty)가 요청을 수신한다.
-3. Netty의 **Event Loop 스레드**가 요청을 스프링이 제공하는 WebFlux HttpHandler에게 전달한다.
-4. WebFlux의 프론트 컨트롤러인 **DispatcherHandler**가 요청을 받아 HandlerMapping을 통해 처리할 핸들러를 찾는다.
-5. HandlerAdapter가 실제 핸들러(컨트롤러)를 호출한다.
-6. 핸들러는 결과를 Mono / Flux 형태로 반환한다.
-6. 데이터가 준비되는 시점에 논블로킹 방식으로 HTTP 응답이 전송된다.
-
-모든 과정은 비동기적으로 연결된 리액티브 파이프라인 위에서 수행되며 처리 결과를 기다리기 위해 스레드가 점유되지 않는다.
-
 ### Event Loop 스레드의 역할
 
 ```text
 EventLoop-1 → 요청 A, B, C
 EventLoop-2 → 요청 D, E
 DispatcherHandler (WebFlux의 프론트 컨트롤러)
+
 DispatcherHandler는 WebFlux에서 모든 요청을 가장 먼저 받는 프론트 컨트롤러 역할의 스프링 빈이다. (어떤 컨트롤러를 부를지를 결정)
 ```
 
@@ -182,7 +182,8 @@ Event Loop 스레드는 단순히 요청을 전달하는 역할에 그치지 않
 ### WebFlux 주의점 ⚠️
 Event Loop 스레드를 절대 블로킹하면 안된다.
 Event Loop 스레드를 블로킹하면 그 스레드가 담당하던 모든 연결의 요청 수신과 응답 전송이 동시에 멈추게된다.
-블로킹 I/O(DB, JPA 등)는 별도 블로킹 전용 스레드 풀로 위임해야 한다.
+블로킹 I/O(DB, JPA 등)는 **별도 블로킹 전용 스레드** 풀로 위임해야 한다.
+(논블로킹 DB 드라이버는 DB 응답 올 때까지 기다리지 않는다. 이벤트가 오면 다시 이어서 처리한다)
 
 ### WebFlux의 가치
 WebFlux의 진짜 가치는 DB보다 외부 I/O(API, 메시지, 스트리밍)에 있다.
@@ -198,24 +199,12 @@ API의 경우 이미 고성능 Non-blocking 지원이(WebClient, gRPC)가 아주
 따라서 MSA 간 통신에서 WebFlux가 훨씬 더 큰 가치를 인정받고 있다.
 무조건 MVC보다 좋다기보다 I/O 비중이 높고 동시성이 중요한 서비스에 적합하다.
 
-## WebFlux 요청 흐름
+## WebFlux
 Spring WebFlux는 더이상 WAS가 필요하지 않아 Netty를 사용하며
 Project Reactor를 통해서 Reactive Programming을 지원한다.
 
 Project Reactor는 Reactive Streams의 구현체이다.
 Reactive Streams는 단순히 JVM 기반에서 Async Non-Blocking 처리를 위한 스펙을 명세한 것이다.
-
-```text
-Client
- → Netty (Event Loop), 커피 주문을 넘기자마자 바로 다음 손님을 받는다.
- → HttpHandler, HTTP 요청/응답을 ServerHttpRequest ServerHttpResponse로 랩핑
- → WebFilter Chain, 공통 처리, 인증/인가, 로깅, 헤더 처리, 공통 전/후처리
- → WebHandler, =DispatcherHandler 요청을 어떤 핸들러(@Controller, HandlerFunction) 가 처리할지 결정
- → HandlerFunction / @Controller
- → Mono / Flux
- → Spring subscribe
- → Response write
-```
 
 Spring WebFlux는 기존 Spring MVC와 동일하게 애너테이션 기반으로 설정할 수 있다. 
 (@RequestMapping, @ResponseBody, @PathVariable 등 애너테이션이 동일하게 동작한다)
