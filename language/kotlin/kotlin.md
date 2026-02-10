@@ -1,0 +1,330 @@
+## 람다
+람다는 함수를 변수에도 할당할 수 있고
+메서드의 파라미터로 전달할 수 있고
+메서드의 반환값으로도 사용항 수 있다.
+
+메서드의 파라미터로 전달하려면 자료형 타입을 어떻게 해야할까?
+
+**(자료형, 자료형) → 자료형**
+
+위와 같이 기술한 형태와 같은 형식의 함수는 모두 파라미터로 받을 수 있다.
+
+```kotlin
+fun main() {
+    // 고차 함수 형태로 넘기려면 일반 함수를 고차 함수로 변경해주는 연산자 :: 를 사용해야한다.
+    b(::a) // b가 호출한 함수 a
+}
+
+fun a(str: String) {
+    println("$str 함수 a")
+}
+
+fun b(function: (String)->Unit) {
+    function("b가 호출한")
+}
+```
+```text
+b가 호출한 함수 a
+```
+파라미터로 넘길 함수를 굳이 이름까지 붙여 따로 만들 필요가 없다.
+이때 **함수를 람다식으로 표현**할 수 있다.
+
+### 람다식 작성법
+파라미터로 받아온 문자열을 매칭해줄 변수 이름을 작성한다.
+```kotlin
+fun main() {
+    b(::a) // b가 호출한 함수 a
+   
+    val c: (String)->Unit = { str: String -> // 자료형은 타입 추론으로 생략 가능 
+        println("$str 함수 a")
+    }
+    b(c)
+}
+
+fun a(str: String) {
+    println("$str 함수 a")
+}
+
+fun b(function: (String)->Unit) {
+    function("b가 호출한")
+}
+```
+```text
+b가 호출한 함수 a
+b가 호출한 함수 a
+```
+
+### 람다 사용 시 알아두면 좋은 규칙
+```kotlin
+val calculate: (Int, Int) -> Int = { a, b ->
+  println(a)
+  println(b)
+  a + b // 마지막 구문인 a + b의 값을 Int로 반환함
+} 
+```
+* 람다 함수도 여러 줄로 작성이 가능하다.
+  * 여러 줄인 경우 마지막 구문의 결과 값을 반환한다.
+
+```kotlin
+val a: () -> Unit = { println("파라미터가 없다") }
+```
+* 파라미터가 없는 람다 함수는 실행할 구문들만 나열하면 된다.
+
+```kotlin
+val c: (String) -> Unit = { println("$it 람다함수") }
+```
+* 파라미터가 하나라면 파라미터 이름을 붙여줄 필요 없이 it 을 사용할 수 있다.
+
+### 람다 호출 형태 정리
+* `(T) -> Unit` 람다 
+  * T를 람다의 인자로 받는 형태
+  * 호출 시 객체를 명시적으로 전달해야 한다.
+  * 람다 내부에서 객체는 `it` 또는 별도 파라미터 이름으로 접근한다.
+```kotlin
+val f: (User) -> Unit = { user ->
+    user.name = "Belluga"
+}
+
+f(user)   // 호출 방식
+```
+함수 호출 관점에서 User를 인자로 넘겨 실행한다.
+
+* `T.() -> Unit` 람다
+  * T를 람다의 리시버(this)로 사용하는 형태
+  * 호출 시 객체가 수신자(receiver) 가 된다
+  * 람다 내부에서 this == T 이므로 멤버에 바로 접근 가능하다
+```kotlin
+val f: User.() -> Unit = {
+    name = "Belluga"
+}
+
+user.f()   // 호출 방식
+```
+함수 호출 관점에서 User 객체에 대해 블록을 실행한다.
+
+## 스코프 함수
+객체를 임시로 this 또는 it으로 받아 특정 범위(scope) 안에서 여러 작업을 깔끔하게 작성할 수 있게 해주는 함수이다.
+스코프 함수를 이용하면 main 함수와 별도의 scope에서 인스턴스의 변수와 함수를 사용하므로 코드가 깔끔해진다는 장점이 있다.
+
+Kotlin 스코프 함수들은 전부 각각 다른 질문에 답하는 도구라고 보면 이해하기 쉽다.
+- apply
+  - 이 객체를 어떻게 셋팅할까?
+- run
+  - 이 컨텍스트에서 어떤 계산을 할까?
+- with
+  - 이 객체를 기준으로 무슨 작업을 할까?
+- also
+  - 이 객체를 쓰면서 부가적으로 뭘 하지?
+- let
+  - 이 값으로 무엇을 할까?
+
+### apply
+```kotlin
+inline fun <T> T.apply(block: T.() -> Unit): T {
+    block()
+    return this
+}
+```
+```kotlin
+val user = User().apply {
+    name = "Belluga"
+    age = 30
+}
+```
+모든 타입 T에 대해 apply 함수를 추가한다.
+
+리시버가 T인 람다
+즉 블록 안에서 this가 T 객체이다. (User가 “인자”가 아니라 람다의 “this”가 된다)
+
+- 목적: **객체를 설정/초기화**
+- 반환값: **객체 자신**
+- 아래 질문에 대한 답
+  > 이 객체를 어떻게 셋팅할까?
+  
+```kotlin
+inline fun <T> T.apply(block: (T) -> Unit): T {
+    block()
+    return this
+}
+```
+만약 apply 함수가 위와 같았다면 아래와 같이 사용해야 했을 것이다. (-)
+```kotlin
+user.apply { u ->
+    u.name = "Belluga"
+}
+```
+
+### run
+```kotlin
+inline fun <T, R> T.run(block: T.() -> R): R {
+    return block()
+}
+```
+```kotlin
+val isCheap = book.run {
+    price < 10000
+}
+```
+```kotlin
+val label = Book("Book",10000).run {
+    discount()
+    "$name -$price원"
+}
+```
+- 목적: 객체를 이용해 어떤 값을 계산
+- 반환값: 마지막 표현식
+- 아래 질문에 대한 답
+  > 이 객체를 이용해서 뭘 얻을까?
+
+### with
+```kotlin
+inline fun <T, R> with(receiver: T, block: T.() -> R): R {
+    return receiver.block()
+}
+```
+run 과 동일하지만 인스턴스를 참조 연산자 대신 파라미터로 받는다는 차이점만 존재한다.
+`a.run { .. }` → 확장 함수
+`with(a) { .. }` → 일반 함수
+
+### also/let
+```kotlin
+inline fun <T> T.also(block: (T) -> Unit): T {
+    block(this)
+    return this
+}
+```
+```kotlin
+inline fun <T, R> T.let(block: (T) -> R): R {
+    return block(this)
+}
+```
+also는 apply와 비슷하다 (처리가 끝나면 인스턴스를 반환)
+let은 run과 비슷하다 (처리가 끝나면 최종값을 반환)
+
+apply와 run이 참조 연산자 없이 인스턴스의 변수와 함수를 사용할 수 있었다면
+also와 let은 파라미터를 통해 인스턴스를 넘긴것 처럼 `it`을 통해 인스턴스를 사용할 수 있다.
+
+Why? 같은 이름의 변수나 함수가 **‘scope 바깥에 중복되어 있는 경우에 혼란을 방지하기 위함이다’**
+also/let은 this가 아닌 it을 사용함으로써 스코프 안밖의 이름 충돌을 명시적으로 드러낼 수 있다.
+
+```kotlin
+fun main() {
+    val price = 5000
+    
+    val a = Book("Book", 10000).apply {
+        name = "[초특가] " + name
+        discount()
+    }
+    a.run { 
+      println("상품명: ${name}, 가격: ${price}") // 5000
+    }
+    
+    a.let {
+        println("상품명: ${it.name}, 가격: ${it.price}") // 8000
+    }
+}
+
+data class Book(var name: String, var price: Int) {
+    fun discount() {
+        price -= 2000
+    }
+}
+```
+run 함수가 인스턴스 내의 price 속성보다 main 함수의 price 변수를 우선시한다.
+이때 run을 대체하는 let을 사용할 수 있다.
+
+## Kotlin DSL
+DSL(Domain Specific Language)이란 특정 영역(domain)에서 최적화되어 사람이 읽기 쉬운 형태로 표현한 언어이다.
+
+### Kotlin DSL의 핵심 철학
+DSL은 구현부터 시작하지 않는다.
+먼저 어떻게 쓰고 싶은지를 정한다.
+```kotlin
+page {
+    header {
+        title("Home")
+    }
+    body {
+        section {
+            text("Welcome")
+        }
+    }
+}
+```
+사용자가 쓰게 될 코드 모양을 먼저 설계하고
+그 코드를 가능하게 하는 API를 역으로 만든다.
+
+### Kotlin DSL의 핵심 구성 요소
+* 리시버 람다 (`T.() -> Unit`)
+  * 블록 내부에서 this가 특정 타입을 가리키게 한다.
+```kotlin
+section {
+    text("Hello") // this.text()
+}
+```
+
+* 중첩 가능한 객체 구조
+  * DSL 블록은 대부분 트리 구조로
+  * 부모 → 자식으로 객체가 쌓인다
+```text
+Page
+ └─ Body
+     └─ Section
+```
+
+* 의미 있는 함수/타입 이름
+  * 문법보다 의미가 먼저 읽히도록 설계한다.
+  * doSomething() 보다 header {}, section {} 같은 이름을 사용한다.
+
+### DSL 설계
+* 블록 하나 = 리시버 람다 하나
+```kotlin
+fun page(block: Page.() -> Unit)
+fun header(block: Header.() -> Unit)
+fun body(block: Body.() -> Unit)
+```
+각 `{}` 블록은 보통 다음 형태로 매핑된다.
+
+* 상태를 가지는 객체 설계
+```kotlin
+class Page {
+    val headers = mutableListOf<Header>()
+
+    fun header(block: Header.() -> Unit) {
+        headers += Header().apply(block)
+    }
+}
+```
+* 객체 생성
+* 설정(block 실행)
+* 결과를 컬렉션에 
+
+```kotlin
+class Body {
+    val sections = mutableListOf<Section>()
+
+    fun section(block: Section.() -> Unit) {
+        sections += Section().apply(block)
+    }
+}
+```
+이 패턴이 반복되며 DSL 전체 구조가 완성된다.
+
+### 다른 DSL 예제
+```kotlin
+val mail = email {
+    to = "test@test.com"
+    title = "Hello"
+}
+```
+
+```kotlin
+class Email {
+    var to: String = ""
+    var title: String = ""
+}
+
+fun email(block: Email.() -> Unit): Email {
+    return Email().apply(block)
+}
+```
