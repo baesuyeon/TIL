@@ -328,3 +328,96 @@ fun email(block: Email.() -> Unit): Email {
     return Email().apply(block)
 }
 ```
+
+## 제네릭
+**제네릭이란?**
+
+함수나 클래스를 선언할 때 고정적인 자료형 대신
+실제 사용 시점에 결정되는 타입 파라미터를 받아 사용하는 방법이다.
+
+- 코드의 재사용성을 높일 수 있다.
+- 타입 안정성을 컴파일 시점에 보장할 수 있다.
+
+### 타입 파라미터
+타입 파라미터는 관례적으로 `T` 를 사용한다.
+여러 개가 필요한 경우 `<T, U, V>` 형태로 선언할 수 있다.
+
+### 제네릭 타입이 결정되는 시점
+```kotlin
+// 함수
+fun <T> genericFunc(param: T): T
+
+// 클래스
+class GenericClass<T>(var prop: T)
+```
+`T` 는 실제 타입이 아니라 컴파일 시 실제 타입으로 치환되는 자리 표시자다.
+
+```kotlin
+fun <Int> genericFunc(param: Int): Int
+
+class GenericClass<Int>(var pref: Int)
+```
+타입 파라미터에 실제 타입이 할당되면
+제네릭을 사용하는 모든 코드는 해당 타입으로 컴파일된다.
+→ 내부적으로는 Int 전용 함수 / 클래스처럼 동작한다.
+
+### 타입 제한 (Upper Bound)
+`<T: SuperClass>`
+제네릭 타입을 특정 수퍼 클래스(또는 인터페이스)를 상속한 타입으로만 제한할 수 있다.
+
+```kotlin
+fun <T : SuperClass> genericFunc(param: T): T
+```
+T 는 반드시 SuperClass 를 상속한 타입이어야 한다.
+
+### 타입 추론
+* 함수 제네릭의 타입 추론
+```kotlin
+fun <T> genericFunc(param: T): T
+
+genericFunc(1)
+```
+호출 시점에 타입이 자동 결정된다.
+
+* 클래스 제네릭의 타입 추론
+```kotlin
+class GenericClass<T>(var pref: T)
+
+GenericClass<Int>() // 타입 파라미터를 명시
+
+GenericClass(1) // 생성자 인자를 통해 타입을 추론
+```
+
+## out / in (공변성, 반공변성)
+자바, 코틀린은 무공변(불공변)으로
+Dog가 Animal의 자식이더라도 List<Dog>는 List<Animal>에 대입할 수 없다. (완전히 남남이라고 선언)
+
+왜그렇게 만들었을까?
+런타임에 발생할 수 있는 사고를 막기 위해서이다.
+```kotlin
+val dogList: MutableList<Dog> = mutableListOf(Dog())
+
+val animalList: MutableList<Animal> = dogList // 원래는 여기서 컴파일 에러가 나지만 허용된다고 가정해보자
+
+animalList.add(Cat()) // animalList의 실제 정체는 dogList인데 고양이가 들어가는 사고가 발생한다.
+val dog: Dog = animalList[1] // 꺼내보니 고양이가 들어있다. (ClassCastException)
+```
+하위 타입 컬렉션을 상위 타입 컬렉션으로 보는 순간
+상위 타입의 다른 하위 객체가 들어갈 수 있다.
+→ 강아지 상자를 동물 상자로 보는 건 위험하다.
+
+```kotlin
+val animalList: MutableList<Animal> = mutableListOf(Cat())
+addDog(animalList) // 원래는 여기서 컴파일 에러가 나지만 허용된다고 가정해보자
+
+// animalList = [Cat, Dog]
+val dog: Dog = animalList[0] // 실제 정체는 Cat인데 Dog로 꺼내지는 사고가 발생한다. (ClassCastException)
+
+fun addDog(list: MutableList<Dog>) {
+  list.add(Dog())
+}
+```
+Animal 리스트에 Dog를 추가하는 건 안전하지만
+그 리스트를 Dog 리스트로 간주하는 순간 문제가 발생한다.
+→ 동물 상자를 강아지 상자로 보는 것도 위험하다.
+
