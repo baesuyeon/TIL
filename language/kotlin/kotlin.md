@@ -421,3 +421,109 @@ Animal 리스트에 Dog를 추가하는 건 안전하지만
 그 리스트를 Dog 리스트로 간주하는 순간 문제가 발생한다.
 → 동물 상자를 강아지 상자로 보는 것도 위험하다.
 
+Kotlin에서는 아무런 정보가 없다면 모두 막아야 안전하지만
+개발자가 **‘이 방향은 절대 안 쓸게’** 라고 약속하면 그 약속을 믿고 일부 대입을 허용한다.
+
+### out — 내보내기 전용, 읽기 전용, 반환 전용
+* out이 쓰이는 곳
+
+| 위치                     | 의미                                     |
+| ---------------------- |----------------------------------------|
+| `interface Foo<out T>` | 클래스 내부에서 `T`를 반환(생산)으로만 사용             |
+| `MutableList<out Animal>`     | 해당 위치(ex 함수 파라미터)에서 읽기 전용으로 사용 (쓰기 금지) |
+
+* out이 선언되는 위치
+```kotlin
+interface Producer<out T> {
+    fun produce(): T
+}
+```
+* ️반환은 가능하다.
+* 파라미터로는 받을 수 없다.
+* 하위 타입 리스트를 상위 타입 리스트로 다뤄도 안전하다.
+* List<Dog> → List<Animal> 대입 허용
+
+대표적인 예: List
+```kotlin
+interface List<out T>
+```
+* get(index): T 있음 (T를 반환)
+* add(T) 없음
+
+```kotlin
+val dogs: List<Dog> = listOf(Dog())
+val animals: List<Animal> = dogs // 가능해진다.
+val animal: Animal = animals[0] // 문제가 없다
+```
+
+```kotlin
+fun printAnimals(list: MutableList<out Animal>) { // list를 읽기 전용으로만 사용하겠다는 의미
+  val a: Animal = list[0]   // OK
+  // list.add(Dog()) ❌
+}
+```
+원래 MutableList<Animal>은 MutableList<Dog>을 받을 수 없다.
+MutableList에 Cat이 들어갈 수 있다.
+
+`printAnimals` 위 함수는 아래 파라미터를 모두 받을 수 있다.
+* List<Dog>
+* List<Cat>
+* List<Animal>
+
+참고)
+```kotlin
+// ❌ 이런 건 불가능, 이런 문법은 없다.
+fun <out T> foo(): T
+```
+
+### in — 받기 전용, 쓰기 전용
+* in이 쓰이는 곳
+| 위치                       | 의미                                      |
+| ------------------------ | --------------------------------------- |
+| `interface Foo<in T>`    | 클래스 내부에서 `T`를 파라미터(소비)로만 사용             |
+| `MutableList<in Animal>` | 해당 위치(ex 함수 파라미터)에서 쓰기 전용으로 사용 (읽기 제한됨) |
+
+* in이 선언되는 위치
+```kotlin
+interface Consumer<in T> {
+    fun consume(value: T)
+}
+```
+* ️파라미터로는 받을 수 있다.
+* 반환 타입으로는 사용할 수 없다.
+* 상위 타입 리스트를 하위 타입 리스트처럼 다룰 수 있다.
+* MutableList<Animal> → MutableList<in Dog> 대입 허용
+
+대표적인 예: 
+```kotlin
+interface Comparable<in T> {
+    operator fun compareTo(other: T): Int
+}
+``` 
+compareTo는 T를 파라미터로 받기만 한다. (T를 소비)
+
+```kotlin
+class Dog : Comparable<Animal> {
+    override fun compareTo(other: Animal): Int {
+        return 0
+    }
+}
+```
+Dog는 Animal과 비교가 가능하다.
+Comparable<in T> 이기 때문에 Comparable<Animal>을 Comparable<Dog>처럼 취급이 가능하다.
+상위 타입을 소비하는 것이 안전하다.
+
+```kotlin
+fun addDog(list: MutableList<in Dog>) { // list를 넣기 전용으로만 사용하겠다는 의미
+    list.add(Dog())
+    // val dog: Dog = list[0] ❌ 불가
+}
+```
+element를 넣는 용도로만 쓰겠다.
+addDog는 아래를 모두 받을 수 있다.
+* MutableList<Dog>
+* MutableList<Animal>
+* MutableList<Any>
+
+왜 읽기가 제한될까? list에 Cat이 들어있을 수도 있다. (animals가 addDog 함수에 전달될 수도 있다)
+`val animals: MutableList<Animal> = mutableListOf(Cat())`
