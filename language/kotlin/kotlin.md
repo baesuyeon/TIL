@@ -92,15 +92,143 @@ f(user)   // 호출 방식
 * `T.() -> Unit` 람다
   * T를 람다의 리시버(this)로 사용하는 형태
   * 호출 시 객체가 수신자(receiver) 가 된다
+    * User 객체 안에서 실행되는 함수
+    * User가 파라미터로 전달되는 게 아니라 this로 들어온다.
   * 람다 내부에서 this == T 이므로 멤버에 바로 접근 가능하다
 ```kotlin
 val f: User.() -> Unit = {
-    name = "Belluga"
+    name = "Belluga" // this.name = "Belluga"로 동작
 }
 
 user.f()   // 호출 방식
 ```
 함수 호출 관점에서 User 객체에 대해 블록을 실행한다.
+아래 코드와 같은 의미이다.
+
+```kotlin
+val f: (User) -> Unit = { user ->
+    user.name = "Belluga"
+}
+```
+
+### 실무에서 람다를 사용하는 케이스
+람다는 “값”이 아니라 “행동”을 전달하기 위해 존재한다.
+즉 데이터가 아니라 실행 로직을 넘길때 사용한다.
+
+* 컬렉션 처리
+```kotlin
+users
+    .filter { it.isActive }
+    .map { it.name }
+    .sortedBy { it }
+```
+
+```kotlin
+val arr = intArrayOf(1, 2, 3, 4, 5)
+val sum = arr.sumOf { it.toLong() }
+
+public inline fun <T> Array<out T>.sumOf(selector: (T) -> Long): Long {
+  var sum: Long = 0.toLong()
+  for (element in this) {
+    sum += selector(element)
+  }
+  return sum
+}
+```
+```text
+Array<out T>  - 읽기 전용 배열 (해당 배열에 element를 넣지 않는다)
+     | each element → selector(element): Long
+     ↓
+ sum of all Long results
+```
+`fun <T>`: `<T>`는 제네릭 타입 파라미터 선언이다. <br/>
+sumOf 함수가 모든 타입 `T`에 대해 동작할 수 있다는 뜻이다. (`Array<Int>`, `Array<String>`, `Array<User>`, ..)
+
+* 행동을 파라미터로 넘길 때
+행동을 위임할 때 사용한다. (재시도 로직, 트랜잭션 랩핑, 공통 로깅, 시간 측정)
+```kotlin
+fun <T> retry(times: Int = 3, block: () -> T): T {
+  var lastException: Exception? = null
+  repeat(times) {
+    try {
+      return block() // 성공 시 바로 결과 반환
+    } catch (e: Exception) {
+      lastException = e
+      println("재시도 중... ($it)")
+    }
+  }
+  throw lastException ?: RuntimeException("Unknown error")
+}
+
+// 사용 예시
+val data = retry(3) {
+  api.fetchUserData(userId)
+}
+```
+
+```kotlin
+transactionTemplate.execute {
+    repository.save(entity)
+}
+```
+
+```kotlin
+@Component
+class DistributedLockExecutor(
+  private val lockManager: LockManager
+) {
+
+  fun <T> withLock(
+    key: String,
+    block: () -> T
+  ): T {
+
+    require(key.isNotBlank()) { "Lock key must not be blank." }
+
+    if (!lockManager.lock(key)) {
+      throw LockAcquisitionException("Failed to acquire lock. key=$key")
+    }
+
+    return try {
+      block()
+    } finally {
+      runCatching { lockManager.unlock(key) }
+        .onFailure { log.error("Failed to release lock. key=$key", it) }
+    }
+  }
+}
+
+lockExecutor.withLock("order:123") {
+  orderService.completeOrder()
+}
+```
+행동을 파라미터로 넘겨서 공통 로직(락 관리)과 비즈니스 로직을 분리할 수 있다.
+
+* DSL 만들 때
+
+* 전략 패턴 대체
+```java
+interface DiscountPolicy {
+    int discount(int price);
+}
+
+calculate(1000, new DiscountPolicy() {
+  @Override
+  public int discount(int price) {
+    return (int)(price * 0.9);
+  }
+});
+```
+Java 8이후에는 람다도 가능하다. 
+
+```kotlin
+fun calculate(price: Int, discount: (Int) -> Int) {
+    println(discount(price))
+}
+
+calculate(1000) { it * 0.9 }
+```
+인터페이스 없이도 전략 주입이 가능하다.
 
 ## 스코프 함수
 객체를 임시로 this 또는 it으로 받아 특정 범위(scope) 안에서 여러 작업을 깔끔하게 작성할 수 있게 해주는 함수이다.
@@ -297,7 +425,7 @@ class Page {
 ```
 * 객체 생성
 * 설정(block 실행)
-* 결과를 컬렉션에 
+* 결과를 컬렉션에 추가
 
 ```kotlin
 class Body {
@@ -390,7 +518,7 @@ GenericClass(1) // 생성자 인자를 통해 타입을 추론
 
 ## out / in (공변성, 반공변성)
 자바, 코틀린은 무공변(불공변)으로
-Dog가 Animal의 자식이더라도 List<Dog>는 List<Animal>에 대입할 수 없다. (완전히 남남이라고 선언)
+Dog가 Animal의 자식이더라도 `List<Dog>`는 `List<Animal>`에 대입할 수 없다. (완전히 남남이라고 선언)
 
 왜그렇게 만들었을까?
 런타임에 발생할 수 있는 사고를 막기 위해서이다.
