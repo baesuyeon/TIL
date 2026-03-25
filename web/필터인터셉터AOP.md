@@ -300,3 +300,9 @@ Interceptor라는 개념이 따로 없다.
 서블릿 필터의 경우 단순히 request , response 만 제공했지만, 인터셉터는 어떤 컨트롤러( handler )가 호출되는지 호출 정보도 받을 수 있다.
 스프링 인터셉터에도 URL 패턴을 적용할 수 있는데, 서블릿 URL 패턴과는 다르고, 매우 정밀하게 설정할 수 있다.
 
+AOP는 **비즈니스 로직(Service, Repository)** 전반에 걸친 공통 기능에 적합하다. (JoinPoint)
+스프링이 관리하는 **모든 객체(Bean)**의 메서드에 침투할 수 있고 메서드의 파라미터와 리턴값을 직접 가공할 수 있다.
+AOP가 훨씬 정교하다.
+* Service 클래스의 특정 메서드
+* Repository 클래스의 DB 접근 메서드
+* 외부 API를 호출하는 Component 메서드
