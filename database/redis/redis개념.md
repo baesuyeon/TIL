@@ -160,7 +160,7 @@ Spring WebFlux와 같은 Reactive 환경에서는 Lettuce가 유일한 선택지
 단점
 * 캐시 장애 시 DB에 부하가 집중될 수 있다.
 * 신규 데이터 초기에는 cache miss가 많이 발생할 수 있다.
-→ 이를 완화하기 위해 cache warming을 사용할 수 있다. (미리 db에서 캐시로 데이터를 밀어넣어주는 작업)
+  → 이를 완화하기 위해 cache warming을 사용할 수 있다. (미리 db에서 캐시로 데이터를 밀어넣어주는 작업)
 
 ## 캐싱 전략 - 쓰기 전략
 Write: update, insert, delete를 포함한 모든 변경 작업
@@ -325,6 +325,122 @@ key
   * 정확한 값이 아닌 근사치를 제공한다.
   * 데이터의 수와 상관없이 메모리 사용량은 항상 약 12KB로 고정된다.
 
+## Sorted Set
+중복되지 않는 문자열(member)을 점수(score)에 따라 정렬한 집합이다.
+score가 같으면 member 문자열의 사전 순으로 정렬한다.
+
+```text
+key = leaderboard
+
+score    member
+----------------
+100      userA
+150      userC
+200      userB
+```
+
+주요 명령어
+
+| 명령어                            | 설명                              | 시간 복잡도        |
+|--------------------------------|---------------------------------|---------------|
+| ZADD key score member          | 새로운 멤버와 점수를 추가                  | O(log N)      |
+| ZINCRBY key increment member   | 특정 멤버의 점수를 증가/감소                | O(log N)      |
+| ZRANGE key start stop          | 점수 순위 기반 범위 조회 (낮은 순)           | O(log N + M)  |
+| ZREVRANGE key start stop       | 점수 순위 기반 범위 조회 (높은 순)           | O(log N + M)  |
+| ZRANK key member               | 특정 멤버의 순위 조회                    | O(log N)      |
+| ZSCORE key member              | 특정 멤버의 점수 조회                    | O(1)          |
+| ZREM key member                | 특정 멤버 삭제                        | O(log N)      |
+| ZREMRANGEBYRANK key start stop | start ~ stop 범위에 있는 member 삭제   |  O(log N + M) |
+
+ZADD 옵션
+
+| 옵션   | 의미                |
+| ---- | ----------------- |
+| NX   | member 없을 때만 추가   |
+| XX   | member 있을 때만 업데이트 |
+| GT   | score 증가만 허용      |
+| LT   | score 감소만 허용      |
+| CH   | 변경된 member 수 반환   |
+| INCR | score 증가 연산       |
+
+실제 사용 사례
+
+(1) 실시간 투표 및 랭킹 시스템
+* Top 10 유저 등수/점수 확인
+* 특정 유저의 등수/점수 확인
+
+```text
+ZADD key score member
+ZADD leaders:exp 0 391(userId)
+                   127
+                   268
+                   637
+                   722
+                   971
+                   662
+                   37
+                   175
+                   21
+```
+게임 리더보드 초기화, 초기 점수는 0으로 가정
+
+```text
+ZINCRBY key increment member
+ZINCRBY leaders:exp 300 37(userId)
+```
+플레이어가 점수 획득
+
+```text
+│ score    member
+│ ----------------
+│ 100      userA
+│ 150      userC
+│ 200      userB
+▼
+```
+ZRANGE
+
+```text
+▲ score    member
+│ ----------------
+│ 100      userA
+│ 150      userC
+│ 200      userB
+```
+```text
+ZREVRANGE leaders:exp 0 9 WITHSCORES
+```
+ZREVRANGE 를 사용해 상위 Top 10을 조회할 수 있다.
+
+```text
+ZRANK leaders:exp 37 // 낮은 순 → 높은 순
+ZREVRANK leaders:exp 37 // 높은 순 → 낮은 순
+```
+ZREVRANK를 사용해 userId 37의 등수를 확인할 수도 있다.
+
+```text
+ZSCORE leaders:exp 37
+```
+특정 유저의 점수를 조회할 수도 있다.
+
+```text
+ZINCRBY key increment member
+ZINCRBY votes:event_1 1 candidate_A
+```
+실시간 투표의 경우 투표할 때마다 점수를 1 올릴 수 있다.
+
+(2) 선착순 대기열
+이벤트 페이지에 접속한 순서대로 대기 번호를 부여하고 순차적으로 입장시켜야하는 경우
+
+```text
+ZADD waiting_line {timestamp} {user_id}
+```
+score로 현재 시간을 사용하면 들어온 순서대로 정렬된다.
+
+(3) 최근 본 상품, 최근 검색어
+유저별로 최근에 본 상품 5개만 유지하고 싶은 경우
+타임스탬프를 점수로 사용하여 데이터를 넣고 ZREMRANGEBYRANK를 사용해 5위 밖의 데이터는 자동으로 지워버릴 수 있다.
+
 ## Counting 전략
 * 정확한 카운팅 (String, Hash, ZSet)
 `INCR`, `INCRBY`, `ZINCRBY`와 같은 커맨드를 사용한다. 
@@ -347,6 +463,39 @@ PFMERGE key1, key2, key3 // merge된 결과
   * 웹사이트 방문한 유니크 IP 수
   * 유니크 검색어 수
   * 유니크 사용자 수 집계
+
+## 레디스 동시성 문제?
+동시에 요청이 2개 들어오는 경우
+```text
+A → redis 조회 → 없음
+B → redis 조회 → 없음
+```
+```text
+A → SET RUNNING → 애플리케이션 비지니스 로직 처리
+B → SET RUNNING → 애플리케이션 비지니스 로직 처리
+```
+조회와 업데이트 단계가 분리되어있어 중복 업데이트가 발생할 수 있다.
+해결방법(SETNX)
+
+SETNX는 Redis 내부에서 원자적(atomic) 연산으로 실행된다.
+그래서 동시에 요청이 와도 단 하나만 성공한다.
+
+```text
+SET key value NX(key 없을 때만 생성) EX(TTL) 3
+```
+
+request A
+```text
+SET key RUNNING NX → 성공
+→ RUNNING 상태
+→ 외부 API 호출
+```
+
+request B
+```text
+SET key RUNNING NX → 실패
+→ retry
+```
 
 ## 캐시를 사용할 때 대응해야 하는 주요 문제 상황
 * 캐시 스탬피드 (Cache Stampede)
